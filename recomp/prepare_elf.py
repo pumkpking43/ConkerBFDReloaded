@@ -409,6 +409,18 @@ def branch_target(w, pc):
     return None
 
 
+UNPROVIDED_IGNORED = {
+    "_MakeMotorData", "__osPackRequestData", "__osContGetInitData", "__osSiRawStartDma",
+    "__osSiCreateAccessQueue", "__osSiDeviceBusy", "__osSiGetAccess", "__osSiRelAccess",
+    "__osInsertTimer", "__osSetTimerIntr",
+    "__osContRamWrite", "__osContRamRead", "__osSetCompare",
+    "__osPackRamReadData", "__osPackRamWriteData", "__osContDataCrc", "__osContAddressCrc",
+    "__osPfsGetStatus", "__osPfsSelectBank", "__osPfsGetInitData", "__osPfsRWInode",
+    "__osPackReadData", "__osIdCheckSum", "__osRepairPackId", "__osCheckPackId",
+    "__osGetId", "__osCheckId",
+}
+
+
 def load_n64recomp_names(path):
     """Names N64Recomp never emits: its reimplemented and ignored lists in symbol_lists.cpp."""
     text = open(path).read()
@@ -470,6 +482,13 @@ def main(src, dst, symbol_lists=None, originals=None):
             if (s["info"] & 0xF) == STT_FUNC and s["name"].endswith("2") and base in known and base in func_names:
                 s["name"], s["new"] = base, True
                 aliased += 1
+    # libultra internals on N64Recomp's ignored list that the game's own code calls, and that the runtime
+    # doesn't provide (no <name>_recomp). A newer disassembler (spimdisasm from pip) names them, and N64Recomp
+    # then skips them while their callers still reference them, so linking fails. Unnamed, as func_<vram>,
+    # they are translated like the rest of the game's code.
+    for s in syms:
+        if (s["info"] & 0xF) == STT_FUNC and s["name"] in UNPROVIDED_IGNORED:
+            s["name"], s["new"] = f"func_{s['value']:08X}", True
     code = {i for i, n in enumerate(elf.names) if n in CODE_SECTIONS}
     lo = {i: elf.shdrs[i][3] for i in code}
     text_end = {i: elf.shdrs[i][3] + elf.shdrs[i][5] for i in code}
